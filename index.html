@@ -374,7 +374,7 @@ function music(on){ if(musicT){ clearInterval(musicT); musicT=null; } if(!on||!A
 let voice=null;
 function pickVoice(){ const vs=speechSynthesis.getVoices(); voice=vs.find(v=>/en(-|_)US/i.test(v.lang)&&/Google|Natural|Aria|Guy|Samantha|Daniel/i.test(v.name))||vs.find(v=>/^en/i.test(v.lang))||null; }
 if(window.speechSynthesis){ pickVoice(); speechSynthesis.onvoiceschanged=pickVoice; }
-function speak(text){ if(!window.speechSynthesis||!STORY.voiceOn) return; try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text.replace(/\(.*?\)/g,"").replace(/—/g,", ")); if(voice) u.voice=voice; u.rate=.97; u.pitch=1; speechSynthesis.speak(u); }catch(e){} }
+function speak(text,pitch=1){ if(!window.speechSynthesis||!STORY.voiceOn) return; try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text.replace(/\(.*?\)/g,"").replace(/—/g,", ")); if(voice) u.voice=voice; u.rate=.97; u.pitch=pitch; speechSynthesis.speak(u); }catch(e){} }
 function hush(){ try{ window.speechSynthesis&&speechSynthesis.cancel(); }catch(e){} }
 
 /* ---------- UI panel (story text + buttons), floats in the world ---------- */
@@ -396,8 +396,14 @@ function uiDraw({title,ref,body,foot,img,size}){ const g=UI.g; g.clearRect(0,0,1
   if(foot){ g.fillStyle="#bfe3a0"; g.font="italic 32px Georgia,serif"; wrap(g,foot,60,Math.max(y+8,0),1080,42); }
   UI.t.needsUpdate=true; }
 function placeUI(dist=1.7,dy=-.1){ const p=cam.getWorldPosition(new T.Vector3()), d=cam.getWorldDirection(new T.Vector3()); d.y=0; if(d.lengthSq()<1e-4) d.set(0,0,-1); d.normalize();
-  UI.root.position.set(p.x+d.x*dist,Math.max(1.05,p.y+dy),p.z+d.z*dist); UI.root.lookAt(p.x,UI.root.position.y,p.z); }
-function panel(o){ return new Promise(res=>{ uiClear(); uiDraw(o); UI.root.visible=true; if(!o.keep) placeUI(o.dist||1.7,o.dy??-.1);
+  UI.root.position.set(p.x+d.x*dist,Math.max(.75,p.y+dy),p.z+d.z*dist); UI.root.lookAt(p.x,UI.root.position.y,p.z); }
+function panel(o){ return new Promise(res=>{ uiClear(); uiDraw(o); UI.root.visible=true;
+  const nB=(o.buttons||[1]).length, colN=o.column?nB:(o.grid?Math.ceil(nB/o.grid):1), flat=!R.xr.isPresenting;
+  // on a computer screen, make sure every answer button fits: shrink a little and raise the panel for long lists
+  const sc=(o.scale||1)*(flat&&colN>=3?Math.max(.72,1-(colN-2)*.09):1); UI.root.scale.setScalar(sc);
+  const dist=o.dist||1.7, dy=o.dy!==undefined?o.dy:(-.1+(flat?Math.max(0,colN-1)*.11*sc:0));
+  if(!o.keep){ placeUI(dist,dy);
+    if(flat){ const top=UI.root.position.y+UI.h/2*sc, bottom=UI.root.position.y-(UI.h/2+.12+colN*.15)*sc, mid=(top+bottom)/2, camY=cam.getWorldPosition(new T.Vector3()).y; PLAYER.pitch=Math.atan2(mid-camY,dist); } }
   const bw=o.buttons||[{text:"Continue  ▶",v:true}]; const n=bw.length;
   if(o.grid){ const C=o.grid, cw=UI.w/C; bw.forEach((b,i)=>uiButton(b.text,(i%C-(C-1)/2)*cw,-UI.h/2-.12-Math.floor(i/C)*.15,cw-.04,.13,()=>res(b.v),b.style)); }
   else if(o.column){ bw.forEach((b,i)=>uiButton(b.text,0,-UI.h/2-.12-i*.15,UI.w*.95,.13,()=>res(b.v),b.style)); }
@@ -469,7 +475,7 @@ function press(h){ audio(); const hit=h.hover;
   if(hit.btn){ SFX.click(); hit.btn.cb(); return; }
   if(hit.beacon){ walkTo(STORY.reachAt); return; }
   if(hit.ia){ const ia=hit.ia; if(ia.type==="hold"){ h.holding=ia; return; } if(ia.type==="grab") grab(h,ia); else if(ia.type==="click"){ SFX.click(); ia.on&&ia.on(ia); } return; }
-  if(hit.floor && STORY.canTeleport && !h.held){ teleportTo(hit.point); }
+  if(hit.floor && STORY.canTeleport && !h.held && !UI.root.visible){ teleportTo(hit.point); }
 }
 function release(h){ h.holding=null; if(h.held) drop(h,h.hover); }
 function teleportTo(p){ SFX.whoosh(); fade(1,.12).then(()=>{ moveTo(p.x,p.z); clampBounds(); STORY.onMove&&STORY.onMove(); fade(0,.18); }); }
@@ -484,7 +490,7 @@ canvas.addEventListener("pointerdown",e=>{ audio(); if(R.xr.isPresenting) return
   if(mouse.held){ drop(mouse,hit); mouse.drag=false; return; }
   if(hit&&(hit.btn||hit.ia||hit.beacon)){ mouse.drag=false; if(hit.btn){ SFX.click(); hit.btn.cb(); } else if(hit.beacon) walkTo(STORY.reachAt); else if(hit.ia.type==="hold") mouse.holding=hit.ia; else if(hit.ia.type==="grab") grab(mouse,hit.ia); else { SFX.click(); hit.ia.on&&hit.ia.on(hit.ia); } }
   else mouse.drag=true; });
-addEventListener("pointerup",e=>{ mouse.holding=null; if(mouse.down && mouse.drag && mouse.moved<4 && mouse.hover && mouse.hover.floor && STORY.canTeleport) teleportTo(mouse.hover.point); mouse.down=false; mouse.drag=false; });
+addEventListener("pointerup",e=>{ mouse.holding=null; if(mouse.down && mouse.drag && mouse.moved<4 && mouse.hover && mouse.hover.floor && STORY.canTeleport && !UI.root.visible) teleportTo(mouse.hover.point); mouse.down=false; mouse.drag=false; });
 addEventListener("keydown",e=>{ PLAYER.keys[e.code]=true; if(e.code==="Space"||e.code==="Enter"){ const b=UI.btns.length===1?UI.btns[0]:null; if(b&&UI.root.visible){ SFX.click(); b.userData.btn.cb(); } } });
 addEventListener("keyup",e=>{ PLAYER.keys[e.code]=false; });
 
@@ -640,6 +646,51 @@ function startXR(){ audio(); if(!navigator.xr) return; navigator.xr.requestSessi
 function startFlat(){ audio(); $("start").style.display="none"; music(true); }
 
 /* =====================================================================
+   CONVERSATIONS — walk up to someone, they talk in a speech bubble,
+   you pick what Joseph says back. Lines are in our own words; the
+   NIV button shows the real verses where there is one.
+   ===================================================================== */
+function bubbleSprite(text,who){
+  const W2=640, pad=26, fs=34; const m=cvs(8,8).getContext("2d"); m.font=`${fs}px Georgia,serif`;
+  const words=text.split(" "), lines=[]; let line="";
+  for(const w of words){ const t=line?line+" "+w:w; if(m.measureText(t).width>W2-pad*2 && line){ lines.push(line); line=w; } else line=t; } if(line) lines.push(line);
+  const lh=fs*1.25, H=Math.round(pad*2+lines.length*lh+(who?44:0)+26);
+  const c=cvs(W2,H,(g)=>{ g.fillStyle="#fffaf0"; g.strokeStyle="#5a3a10"; g.lineWidth=5;
+    g.beginPath(); if(g.roundRect) g.roundRect(4,4,W2-8,H-34,26); else g.rect(4,4,W2-8,H-34); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(W2/2-22,H-32); g.lineTo(W2/2,H-4); g.lineTo(W2/2+22,H-32); g.fill(); g.stroke(); g.fillRect(W2/2-19,H-38,38,8);
+    let y=pad+fs*.85; if(who){ g.fillStyle="#9a5a10"; g.font=`bold 30px Georgia,serif`; g.fillText(who,pad,y); y+=44; }
+    g.fillStyle="#2a1a08"; g.font=`${fs}px Georgia,serif`; for(const l of lines){ g.fillText(l,pad,y); y+=lh; } });
+  const s=new T.Sprite(new T.SpriteMaterial({map:ctex(c),depthTest:false,transparent:true,fog:false})); s.renderOrder=45; const w=1.25; s.scale.set(w,w*H/W2,1); s.userData.h=w*H/W2; return s; }
+function sayBubble(p,text,who){ clearBubble(p); const s=bubbleSprite(text,who); const top=(p.scale.y||1)*2.05+(p.position.y||0); s.position.set(0,0,0); W.add(s);
+  p.userData.bubble=s; const f=()=>{ if(!s.parent){ const i=UPD.indexOf(f); if(i>=0) UPD.splice(i,1); return; } const wp=p.getWorldPosition(new T.Vector3()); s.position.set(wp.x,wp.y+(p.scale.y||1)*2.05+s.userData.h/2,wp.z); }; UPD.push(f); f(); return s; }
+function clearBubble(p){ const s=p&&p.userData.bubble; if(s){ W.remove(s); s.material.map.dispose(); s.material.dispose(); p.userData.bubble=null; } }
+function gesture(p){ const a=p.userData.armR; if(!a) return; TW.to(a.rotation,{x:-.9},.35).then(()=>TW.to(a.rotation,{x:0},.6)); }
+function talkIcon(p){ const s=label("💬 Talk",{h:.16,bg:"rgba(40,90,50,.9)",color:"#ffffff"}); W.add(s); const f=(dt,t)=>{ if(!s.parent){ const i=UPD.indexOf(f); if(i>=0) UPD.splice(i,1); return; } const wp=p.getWorldPosition(new T.Vector3()); s.position.set(wp.x,wp.y+(p.scale.y||1)*2.25+Math.sin(t*3)*.04,wp.z); }; UPD.push(f); return s; }
+
+/* talk(person, "Name", lines, opts)
+   lines: [{npc:"what they say", replies:[{t:"what Joseph says", r:"their answer", note:"(optional teaching note)", best:true}]}, ...]
+   opts: {go:"Talk to …" (walk up and click them first), pitch:1.0, niv:"Genesis …"} */
+async function talk(p,name,lines,opts={}){ blockIfAborted();
+  if(opts.go!==false){ const icon=talkIcon(p); if(p.userData.tag) p.userData.tag.visible=true;
+    await clickTask(opts.go||`💬 Go talk to ${name}. ${VR_()?"Point at them and pull the trigger.":"Click on them."}`,[p],{mark:false,silent:true,delay:150}); W.remove(icon); }
+  hidePanel(); HUD.set(""); const pp=playerPos(); if(p.parent===W) faceTo(p,pp.x,pp.z); if(!VR_()){ const wp=p.getWorldPosition(new T.Vector3()); lookAtPoint(wp.x,wp.z); PLAYER.pitch=.05; }
+  const pitch=opts.pitch??(p.userData.bro==="Benjamin"?1.25:.9);
+  for(let i=0;i<lines.length;i++){ const L=lines[i], last=i===lines.length-1;
+    if(L.npc){ sayBubble(p,L.npc,name); gesture(p); speak(L.npc,pitch); SFX.click(); }
+    if(L.replies){ const order=L.replies.map((r,k)=>k);
+      const v=await panel({title:"💬 "+name,ref:L.npc?"What do you say?":"You speak first. What do you say?",body:L.npc?`“${L.npc}”`:"",size:46,speak:false,scale:.6,dist:1.6,dy:-.3,
+        buttons:order.map(k=>({text:"“"+L.replies[k].t+"”",v:k})),column:true}); blockIfAborted(); hush();
+      const R2=L.replies[v]; clearBubble(p); tone(330,.12,"triangle",.08);
+      if(R2.r){ await beat(350); sayBubble(p,R2.r,name); gesture(p); speak(R2.r,pitch); }
+      if(R2.note || R2.r){ const btn=[{text:"Continue  ▶",v:1}]; const nref=last&&opts.niv&&nivFor(opts.niv)?opts.niv:null; if(nref) btn.push({text:"📖 Read it in the NIV",v:"niv",style:{bg:"#3a5a7a",fg:"#eaf4ff",edge:"#1a2a3a"}});
+        while(true){ const w=await panel({title:R2.r?"💬 "+name:"Good to know",ref:R2.note?"Did you know?":"",body:(R2.r?`“${R2.r}”`:"")+(R2.note?(R2.r?"   ":"")+"  📜 "+R2.note:""),size:44,speak:false,scale:.6,dist:1.6,dy:-.3,buttons:btn}); blockIfAborted(); hush();
+          if(w==="niv"){ await showNIV(nref); continue; } break; } }
+    } else { const btn=[{text:"Continue  ▶",v:1}]; if(last&&opts.niv&&nivFor(opts.niv)) btn.push({text:"📖 Read it in the NIV",v:"niv",style:{bg:"#3a5a7a",fg:"#eaf4ff",edge:"#1a2a3a"}});
+      while(true){ const w=await panel({title:"💬 "+name,body:`“${L.npc}”`,size:46,speak:false,scale:.6,dist:1.6,dy:-.3,buttons:btn}); blockIfAborted(); hush(); if(w==="niv"){ await showNIV(opts.niv); continue; } break; } }
+    clearBubble(p); }
+  hidePanel(); }
+
+/* =====================================================================
    THE STORY — Genesis 37–50, told in our own words.
    Every scene lists its NIV reference so students can read along.
    ===================================================================== */
@@ -697,6 +748,11 @@ chapter({ title:"The Favorite Son", nivIntro:"Genesis 37:1–2", ref:"Genesis 37
       await placeTask("Carry the bucket to the water trough by the sheep pen. "+carryHint(),[bucket],[{obj:trough,r:.9,cap:1,offset:()=>V3(0,.38,0),take:(ia)=>{ splash(); tw.visible=true; setTimeout(()=>ia.root.visible=false,400); }}],1); }
     await placeTask("Bring the 4 lost lambs back into the sheep pen. "+carryHint(), this.lambs,[{obj:this.pen,r:1.9,cap:4,offset:(i)=>V3(Math.cos(i*1.7)*.9,0,Math.sin(i*1.7)*.9),take:()=>SFX.bleat()}],4);
     lookAtPoint(0,-3.4);
+    await talk(this.jacob,"Jacob (Israel)",[
+      {npc:"There you are, Joseph! Are your brothers and the flocks all right?",replies:[
+        {t:"All the lambs are safe in the pen, Father.",r:"Good boy. You always take care of things."},
+        {t:"My brothers haven't been doing their work right.",r:"Hmm. Thank you for telling me, son.",note:"Genesis 37:2 says Joseph brought his father a bad report about his brothers. That didn't help how they felt about him!"}]},
+      {npc:"Come here, my son. I've had something special made — just for you."}],{go:"💬 Your father Jacob is calling you. Go talk to him."});
     await say("A Special Robe","Genesis 37:3","Your father Jacob — God also gave him the name Israel — loves you more than any of his other sons, because you were born when he was already old. He has had a special robe made just for you: long, richly decorated, and full of color. Go and receive it from him.");
     await placeTask("Take the robe from your father and put it on. "+wearHint(),[this.coat],[selfZone(["coat"],()=>{ setSleeves("coat"); SFX.chime(); })],1);
     TW.to(this.jacob.userData.armR.rotation,{x:0},.8); TW.to(this.jacob.userData.armL.rotation,{x:0},.8);
@@ -704,6 +760,10 @@ chapter({ title:"The Favorite Son", nivIntro:"Genesis 37:1–2", ref:"Genesis 37
     mumble(10); for(const b of this.bros){ TW.to(b.rotation,{y:b.rotation.y+Math.PI},1.4); b.userData.look=false; }
     await beat(1500);
     await say("Jealous Brothers","Genesis 37:4","Your brothers can see it plainly: your father loves you more than all of them. Their jealousy turns into hatred. They can't even speak a kind word to you anymore.");
+    await talk(this.bros[0],"Reuben",[
+      {npc:"Hmph. Nice robe, little brother.",replies:[
+        {t:"Father made it just for me! Isn't it beautiful?",r:"Must be nice being Father's favorite.",note:"Showing off a gift can make jealousy worse. Joseph was only seventeen."},
+        {t:"I'm still your brother, Reuben. Nothing has changed.",r:"Everything has changed, Joseph. Go tend your own sheep."}]}],{go:"💬 Try talking to your oldest brother, Reuben."});
     await choice("Why did Joseph's brothers hate him?",["Their father loved Joseph more than the rest of them","Joseph had stolen part of their flocks","Joseph was the oldest and bossed them around"],0,
       "Genesis 37:4 says the brothers saw their father loved Joseph more than any of them — and they hated him for it. Favoritism planted a bitter seed in this family.","Genesis 37:3–4","Read Genesis 37:3–4 again. What did the brothers see?");
   },
@@ -780,7 +840,10 @@ chapter({ title:"Into the Pit", nivIntro:"Genesis 37:12–14", ref:"Genesis 37:1
       await placeTask("Pack your staff, waterskin and bread. "+wearHint().replace("put it on","pack it"),[staff,skin,loaf],[selfZone(["pack"],()=>{})],3); lookAtPoint(0,-10); }
     await reachTask("Find someone who knows where your brothers went. "+(VR_()?"Point at the ground and pull the trigger to move — or point at the light beam.":"Walk with W A S D (or click the ground). You can also click the light beam."),V3(7,0,-9),1.6);
     faceTo(this.man,playerPos().x,playerPos().z);
-    await say("Lost in the Fields","Genesis 37:15–17","A man finds you wandering around in the fields and asks, 'What are you looking for?' You answer, 'I'm looking for my brothers. Do you know where they're grazing their flocks?' He tells you, 'They've moved on from here. I heard them say, Let's go to Dothan.' So you head for Dothan.");
+    await talk(this.man,"Man in the field",[
+      {npc:"You look lost, young man. What are you looking for?",replies:[
+        {t:"I'm looking for my brothers. Can you tell me where they're grazing their flocks?",r:"They've moved on from here. I heard them say, 'Let's go to Dothan.'"},
+        {t:"Have you seen ten shepherds with big flocks around here?",r:"Those brothers? They left. I heard them say, 'Let's go to Dothan.'"}]}],{go:false,niv:"Genesis 37:15–17"});
     for(let i=0;i<3;i++) await reachTask("Follow the stone markers toward Dothan.",this.marks[i],1.6,{count:`${i+1} / 3`});
     lookAtPoint(0,-52); mumble(12);
     await say("“Here Comes the Dreamer”","Genesis 37:18–22","Your brothers see you coming from far away. Before you even reach them, they make a plan to kill you. 'Look — the dreamer is coming! Let's kill him, throw him into one of these cisterns, and say a wild animal ate him. Then we'll see what becomes of his dreams!' But Reuben, the oldest, hears this and tries to save you: 'Let's not take his life. Throw him into this empty cistern out here, but don't hurt him.' Reuben secretly plans to rescue you later and take you home.");
@@ -793,6 +856,10 @@ chapter({ title:"Into the Pit", nivIntro:"Genesis 37:12–14", ref:"Genesis 37:1
     await clickTask("You're at the bottom of a deep, dark pit. Try to climb out — grab the handholds from the lowest to the highest.",this.holds,{order:true,mark:false,onHit:(o,i)=>{ tone(200+i*60,.15,"triangle",.15); TW.to(o.position,{y:o.position.y-.05},.1); }, wrongMsg:()=>"Start with the lowest handhold and climb up.",delay:300});
     SFX.thud(); this.holds[3].visible=false; HUD.flash("The stone breaks off! The walls are too steep — you can't get out.");
     await beat(2200);
+    await talk(this.peek[1],"Judah",[
+      {replies:[
+        {t:"Please! Get me out of here!",r:"Quiet down there, dreamer.",note:"Genesis 42:21 says that years later the brothers remembered how upset Joseph was when he begged them for his life — and they wouldn't listen."},
+        {t:"Judah, I'm your brother! Why are you doing this?",r:"(Judah turns away and doesn't answer.)",note:"Genesis 42:21 says that years later the brothers remembered how upset Joseph was when he begged them for his life — and they wouldn't listen."}]}],{go:"💬 Look up and call to your brother Judah at the top of the pit."});
     await say("Silver for a Brother","Genesis 37:25–27","Up above, your brothers sit down to eat a meal. Then they spot a caravan of Ishmaelite traders coming from Gilead, their camels loaded with spices, balm and myrrh, on the way down to Egypt. Judah says, 'What will we gain if we kill our brother and cover up his blood? Come, let's sell him to these traders instead. After all, he is our brother — our own flesh and blood.' The others agree.");
     this.rope.visible=true; grow(this.rope,.6);
     await clickTask("A rope drops into the pit. Grab it!",[this.rope],{mark:false});
@@ -856,6 +923,11 @@ chapter({ title:"Potiphar's House", nivIntro:"Genesis 39:1–2", ref:"Genesis 39
       const lamps=[]; for(const [x,z] of [[-5,-2.5],[-1.7,-2.5],[1.7,-2.5],[5,-2.5]]){ const st=G(x+.7,0,z+.6); M(new T.CylinderGeometry(.04,.06,1.2,6),mat(0xc8962a,{m:.4}),0,.6,0,st); const l=OBJ.lamp(x+.7,1.25,z+.6); l.userData.flame.visible=false; lamps.push(l); }
       await clickTask("Evening is coming. Light the four oil lamps in the hall.",lamps,{mark:false,onHit:(l)=>{ l.userData.flame.visible=true; torchLight(l.position.x,l.position.y+.3,l.position.z,.8,6); noise(.3,.15,3000,1); }}); }
     await placeTask("Serve Potiphar's meal: carry the bread and the cup to his table.",[this.bread,this.cup],[{obj:this.tableTop,r:.9,cap:2,offset:i=>V3(i?.3:-.3,0,0),ringY:.82,take:()=>{}}],2);
+    await talk(this.pot,"Potiphar",[
+      {npc:"Joseph, everything you touch goes well. How do you do it?",replies:[
+        {t:"It isn't me, master. The LORD my God gives me success.",r:"Your God? Then may he keep blessing this house.",note:"Genesis 39:3 says Potiphar could see that the LORD was with Joseph."},
+        {t:"I just work really hard.",r:"Well, keep it up.",note:"Joseph did work hard — but Genesis 39:3 says the real reason was that the LORD was with him and gave him success."}]},
+      {npc:"From now on, you're in charge of my whole house — everything I own."}],{go:"💬 Potiphar wants a word with you. Go talk to him.",niv:"Genesis 39:2–6"});
     TW.to(this.pot.userData.armR.rotation,{x:-1},.5).then(()=>TW.to(this.pot.userData.armR.rotation,{x:0},.6));
     this.pot.visible=false; this.wife.visible=true; faceTo(this.wife,playerPos().x,playerPos().z);
     await say("A Test of Faithfulness","Genesis 39:6–10","You have grown into a strong, good-looking young man, and Potiphar's wife begins to notice you. Day after day she pressures you to be with her as if you were her husband. You refuse every time: 'My master trusts me with everything in this house — everything except you, because you are his wife. How could I do such a wicked thing and sin against God?'");
@@ -907,7 +979,12 @@ chapter({ title:"Dreams in the Dungeon", nivIntro:"Genesis 39:20–21", ref:"Gen
       const cups=[0,1,2].map(i=>OBJ.cup(5.0+i*.3,1.02,-1.5)); cups.forEach(c=>c.userData.kind="cup");
       await placeTask("Carry a cup of water to each of the 3 cells.",cups,this.cells.map(c=>({obj:c,r:.8,cap:1,offset:()=>V3(.35,.02,0)})),3); }
     this.cup.visible=this.baker.visible=true;
-    await say("Two New Prisoners","Genesis 40:1–8","Some time later, Pharaoh's cupbearer (the servant who serves his drinks) and his chief baker offend the king. Pharaoh throws them into this same prison, and the captain of the guard assigns them to you. One morning you find them both looking upset. 'We each had a dream,' they say, 'and there's no one to explain them.' You answer: 'Don't interpretations belong to God? Tell me your dreams.'");
+    await say("Two New Prisoners","Genesis 40:1–4","Some time later, Pharaoh's cupbearer (the servant who serves his drinks) and his chief baker offend the king. Pharaoh throws them into this same prison, and the captain of the guard puts you in charge of them. One morning you find them both looking upset.");
+    await talk(this.cup,"Cupbearer",[
+      {replies:[{t:"Why do you look so sad today?",r:"We both had dreams last night — and there's no one in here to explain them."},{t:"You two look terrible. What happened?",r:"We both had dreams last night — and there's no one in here to explain them."}]},
+      {replies:[
+        {t:"Don't interpretations belong to God? Tell me your dreams.",r:"All right… listen to mine.",note:"That's what Joseph said (Genesis 40:8). He gave God the credit before he said one word about the dreams."},
+        {t:"Lucky for you — I'm great at explaining dreams.",r:"All right… listen to mine.",note:"Joseph didn't brag. He said interpretations belong to God (Genesis 40:8) — he gave God the credit."}]}],{go:"💬 Go talk to the cupbearer.",niv:"Genesis 40:1–8"});
     this.vine.visible=true; grow(this.vine); this.grapes.forEach(g=>{ grow(g); }); this.ped.visible=this.pcup.visible=true; SFX.harp();
     await say("The Cupbearer's Dream","Genesis 40:9–11","The cupbearer says: 'In my dream I saw a vine with three branches. It budded, blossomed, and its clusters ripened into grapes. Pharaoh's cup was in my hand. I took the grapes, squeezed them into the cup, and handed it to Pharaoh.' — Act it out!");
     await placeTask("Squeeze the 3 clusters of grapes into Pharaoh's cup.",this.grapes,[{obj:this.pcup,r:.7,cap:3,ringY:.92,take:(ia,z,n)=>{ ia.root.visible=false; this.wine.visible=true; this.wine.position.y=.98+n*.025; noise(.3,.15,1200,2); }}],3);
@@ -1038,6 +1115,10 @@ chapter({ title:"Seven Years of Plenty", nivIntro:"Genesis 41:46", ref:"Genesis 
       lookAtPoint(0,-3.4);
       await holdTask("Pharaoh says, 'Go to Joseph.' Unbar the storehouse door! "+holdHint(),bar,2.5,{ringY:.6,onTick:(dt,p)=>{ bar.position.x=p*1.2; },sfx:()=>tone(120,.2,"sawtooth",.04)});
       TW.to(bar.position,{y:.05},.4); TW.to(door.position,{x:-1.1},.8); SFX.thud(); lookAtPoint(0,4.5); }
+    await talk(this.people[1],"Traveler from Canaan",[
+      {npc:"Please, my lord — the famine is everywhere. Even back home in Canaan, families are running out of food.",replies:[
+        {t:"Don't be afraid. Egypt has grain, and there's enough for you.",r:"God bless you, my lord!"},
+        {t:"Canaan? Do you know a man named Jacob there?",r:"Jacob? Many men have that name, my lord. I'm sorry.",note:"Joseph had no idea yet — but his own brothers were about to make this same trip."}]}],{go:"💬 Someone in line came a long way. Talk to the traveler from Canaan."});
     await placeTask("Give a sack of grain to each person waiting in line.",this.giveBags,this.people.map(p=>({obj:p,r:.75,cap:1,offset:()=>V3(0,.9,.3),ringY:.03,take:(ia)=>{ bow(p,.5); SFX.chime(); setTimeout(()=>{ p.attach(ia.root); rise(p); walk(p,p.position.x,22,1.4); },700); }})),5);
     await choice("Why did people from all over the world come to Egypt?",["Egypt had stored food because God warned Pharaoh, and Joseph made a wise plan","Egypt never had any bad weather","Joseph was giving away gold"],0,"Genesis 41:57 — all the world came to Egypt to buy grain from Joseph, because the famine was severe everywhere. God used Joseph to save the lives of many nations.","Genesis 41:54–57");
   },
@@ -1059,10 +1140,16 @@ chapter({ title:"The Brothers Bow Down", nivIntro:"Genesis 42:1–4", ref:"Genes
     for(let i=0;i<10;i++){ const b=this.bros[i]; walk(b,(i%5-2)*1.15,-1+Math.floor(i/5)*1.3,1.4); } await beat(7200);
     for(const b of this.bros) bow(b,1.1,true); SFX.harp(); await beat(1200);
     await clickTask("They bow down with their faces to the ground — just like your dream! Count your brothers.",this.bros,{onHit:(b)=>{ if(b.userData.tag) b.userData.tag.visible=true; }});
-    await say("He Knew Them","Genesis 42:7–9","As soon as you see them, you recognize your brothers — but you pretend to be a stranger and speak harshly. 'Where do you come from?' 'From Canaan, to buy food.' You remember the dreams you had about them.");
+    await say("He Knew Them","Genesis 42:7–9","As soon as you see them, you recognize your brothers — but they don't recognize you. You remember the dreams you had about them. You decide to act like a stranger and speak to them harshly.");
+    for(const b of this.bros) rise(b); await beat(700);
+    await talk(this.bros[0],"Reuben",[
+      {replies:[{t:"Where do you come from?",r:"From the land of Canaan, my lord — to buy food."},{t:"Who are you, and why are you here?",r:"From the land of Canaan, my lord — to buy food."}]},
+      {replies:[
+        {t:"You are spies! You've come to see where our land is weak!",r:"No, my lord! We are honest men — twelve brothers, sons of one man in Canaan. The youngest is with our father, and one is no more.",note:"Joseph knew they weren't spies. He was testing them to see if their hearts had changed (Genesis 42:9–16)."},
+        {t:"Tell me about your family.",r:"We were twelve brothers, my lord — sons of one man in Canaan. The youngest is with our father, and one is no more.",note:"In the Bible Joseph spoke harshly and accused them of being spies (Genesis 42:9). He was testing them."}]},
+      {npc:"Please, my lord… we only came to buy food."}],{go:"💬 Question the man who seems to be the oldest.",niv:"Genesis 42:9–20"});
     await choice("Joseph recognized his brothers, but they didn't recognize him. Why not?",["He was grown up, dressed as an Egyptian ruler, and spoke through an interpreter","He wore a mask","It was too dark in the palace"],0,"It had been more than twenty years. Joseph looked and sounded Egyptian — Genesis 42:23 says he used an interpreter, so they didn't know he understood every word they said.","Genesis 42:8, 23");
-    for(const b of this.bros) rise(b);
-    await say("A Test","Genesis 42:9–20","You accuse them: 'You're spies!' 'No, my lord,' they answer, 'we're honest men — twelve brothers, sons of one man in Canaan. The youngest is with our father now, and one is no more.' You decide to test them. After three days in custody you say: 'One of you will stay here in prison. The rest of you go home with grain for your starving families. But you must bring your youngest brother back to me — that will prove you're telling the truth.'");
+    await say("A Test","Genesis 42:17–20","'One is no more' — they mean you. You decide to test them. After three days in custody you say: 'One of you will stay here in prison. The rest of you go home with grain for your starving families. But you must bring your youngest brother back to me — that will prove you're telling the truth.'");
     await say("“We Are Being Punished”","Genesis 42:21–24","They say to each other, 'Surely we're being punished because of our brother. We saw how distressed he was when he begged us for his life, but we wouldn't listen.' Reuben answers, 'Didn't I tell you not to sin against the boy? But you wouldn't listen!' They don't realize you understand them. You turn away from them and begin to weep.");
     weep(); await beat(1500);
     await choice("Which brother did Joseph keep in Egypt?",["Simeon","Reuben","Judah","Levi"],0,"Genesis 42:24 — Joseph had Simeon taken and tied up right in front of them.","Genesis 42:24");
@@ -1091,7 +1178,13 @@ chapter({ title:"Benjamin and the Silver Cup", nivIntro:"Genesis 43:8–15", ref
     this.cup=OBJ.cup(5.6,.86,1.8); this.cup.visible=false; },
   start(){ moveTo(0,6,0); lookAtPoint(0,-1); },
   async play(){
-    await say("Dinner at the Governor's House","Genesis 43:16–30","When you see Benjamin with them, you tell your steward to prepare a feast at your house. The brothers are frightened — they think it's a trap because of the silver. When you arrive, they bow down again. You ask, 'How is your aged father? Is he still living?' Then you see Benjamin, your own mother's son. 'God be gracious to you, my son.' Deeply moved, you hurry out to a private room and weep. Then you wash your face, come back, and say: 'Serve the food.'");
+    await say("Dinner at the Governor's House","Genesis 43:16–28","When you see Benjamin with them, you tell your steward to prepare a feast at your house. The brothers are frightened — they think it's a trap because of the silver. When you come home, they bow down to the ground in front of you again.");
+    await talk(this.bros[3],"Judah",[
+      {replies:[{t:"How is your aged father you told me about? Is he still living?",r:"Our father, your servant, is alive and well, my lord."},{t:"Is the old man — your father — still alive?",r:"Our father, your servant, is alive and well, my lord."}]}],{go:"💬 Ask Judah about your father."});
+    await talk(this.bros[10],"Benjamin",[
+      {replies:[
+        {t:"Is this your youngest brother? God be gracious to you, my son.",r:"Thank you, my lord.",note:"These are almost Joseph's exact words (Genesis 43:29). Then he was so moved he had to hurry out of the room to cry."},
+        {t:"So you're Benjamin. Welcome to Egypt.",r:"Thank you, my lord.",note:"Joseph said, 'God be gracious to you, my son' (Genesis 43:29) — then he was so moved he had to hurry out of the room to cry."}]}],{go:"💬 Now greet Benjamin — your own mother's son.",niv:"Genesis 43:16–30"});
     { const b=basin(6.6,-5.5); weep(); lookAtPoint(6.6,-5.5);
       await holdTask("You've been weeping in private. Wash your face so no one can tell (Genesis 43:31). "+holdHint(),b,2.5,{ringY:1.2,sfx:splash});
       lookAtPoint(0,-1); }
@@ -1165,7 +1258,12 @@ chapter({ title:"Father and Son", nivIntro:"Genesis 45:16–20", ref:"Genesis 45
     this.jacob.position.set(0,0,-15.6); faceTo(this.jacob,0,-14); this.caravan.position.z=-19;
     weep(); TW.to(this.jacob.userData.armL.rotation,{x:-1.3},.8); TW.to(this.jacob.userData.armR.rotation,{x:-1.3},.8);
     await clickTask("There he is — your father. Throw your arms around him.",[this.jacob],{mark:false});
-    await say("Together at Last","Genesis 46:29–30","You throw your arms around your father and weep for a long time. Jacob says to you, 'Now I'm ready to die, since I've seen for myself that you're still alive.' Your whole family settles in Goshen, and you provide food for all of them.");
+    await talk(this.jacob,"Jacob (Israel)",[
+      {npc:"My son… I thought you were dead. Now I'm ready to die, since I've seen with my own eyes that you're alive.",replies:[
+        {t:"Father, God sent me here ahead of you to save our whole family.",r:"The God of Abraham and Isaac has been faithful. Truly, he has."},
+        {t:"I've missed you every single day, Father.",r:"And I mourned you every day, my son. But God has given you back to me."}]},
+      {npc:"Now — take me to meet my grandsons!"}],{go:false,niv:"Genesis 46:29–30"});
+    await say("Home in Goshen","Genesis 47:11–12","Your whole family settles in the region of Goshen, the best land in Egypt, and you provide food for all of them.");
     await say("The Final Word","Genesis 50:15–21","Years later, after Jacob dies, your brothers are afraid. 'What if Joseph holds a grudge and pays us back for all the wrong we did?' They come and throw themselves down before you: 'We are your slaves.' But you tell them: 'Don't be afraid. Am I in the place of God? You planned evil against me, but God planned it for good — to bring about what's happening now: saving many people's lives. So don't be afraid. I will take care of you and your children.' And you comfort them and speak kindly to them.");
     await choice("What is the big idea of Joseph's whole story?",["God was at work through every hard moment, turning evil into good to save many lives","If you're a good person, nothing bad will happen to you","Dreams always come true if you believe hard enough"],0,"Genesis 50:20. Joseph's life wasn't easy — the pit, slavery, lies, prison, being forgotten. But God never left him, and God used all of it for good. Romans 8:28 says the same thing: God works in all things for the good of those who love him.","Genesis 50:19–21");
   },
